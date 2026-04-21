@@ -24,6 +24,7 @@ fun resolveLibztAarOrNull(): File? {
 
 android {
     namespace = "com.example.storagenas"
+    ndkVersion = "30.0.14904198"
     compileSdk {
         version = release(36)
     }
