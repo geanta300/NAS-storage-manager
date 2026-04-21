@@ -1,0 +1,43 @@
+## Android Studio / IntelliJ
+*.iml
+.idea/
+
+## Gradle / Kotlin
+.gradle/
+.gradle-local/
+.kotlin/
+
+## Local machine settings
+local.properties
+
+## Build outputs
+build/
+app/build/
+**/build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+## Generated artifacts / logs
+*.apk
+*.aab
+*.ap_
+*.log
+build_error.log
+build_error_2.log
+build_output.log
+
+## Temporary / local scratch files
+_temp_utf8/
+_temp_classes.jar
+plan.md
+security_scan_report.txt
+scripts/security_full_scan.py
+
+## Bundled binaries and vendored third-party sources
+third_party/
+app/libs/*.aar
+!app/libs/README-libzt.txt
+
+## OS files
+.DS_Store
