@@ -3,6 +3,7 @@ package com.example.storagenas.data.repository
 import com.example.storagenas.data.local.dao.UploadTaskDao
 import com.example.storagenas.domain.model.UploadStatus
 import com.example.storagenas.domain.model.UploadTask
+import com.example.storagenas.domain.repository.QueueProgressSnapshot
 import com.example.storagenas.domain.repository.UploadRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -48,6 +49,26 @@ class UploadRepositoryImpl @Inject constructor(
             uploadStartedAt = uploadStartedAt,
             uploadFinishedAt = uploadFinishedAt,
             clearTiming = clearTiming,
+        )
+    }
+
+    override suspend fun cancelAllActiveTasks(errorMessage: String): Int =
+        dao.cancelAllActive(
+            errorMessage = errorMessage,
+            finishedAt = System.currentTimeMillis(),
+        )
+
+    override suspend fun getQueueProgressSnapshot(): QueueProgressSnapshot {
+        val counts = dao.getQueueCounts()
+        val total = counts.totalCount
+        val processed = (counts.completedCount + counts.failedCount).coerceAtMost(total)
+        val percent = if (total <= 0) 0 else ((processed * 100) / total).coerceIn(0, 100)
+        return QueueProgressSnapshot(
+            totalCount = total,
+            activeCount = counts.activeCount,
+            completedCount = processed,
+            failedCount = counts.failedCount,
+            completedPercent = percent,
         )
     }
 

@@ -10,9 +10,11 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,9 +23,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.storagenas.domain.model.UploadStatus
 import com.example.storagenas.ui.screens.upload.UploadTaskRow
 import com.example.storagenas.ui.components.SectionHeader
 
@@ -71,10 +73,13 @@ fun QueueScreen(
             TopAppBar(
                 title = { Text("Transfer Queue", fontWeight = FontWeight.Bold) },
                 actions = {
+                    IconButton(onClick = viewModel::stopAllActiveUploads) {
+                        Icon(Icons.Default.Stop, contentDescription = "Stop all uploads")
+                    }
                     IconButton(onClick = viewModel::retryFailedUploads) {
                         Icon(Icons.Default.Refresh, contentDescription = "Retry Failed")
                     }
-                    if (uiState.tasks.isNotEmpty()) {
+                    if (uiState.totalTaskCount > 0) {
                         IconButton(onClick = { showClearQueueConfirm = true }) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete queue list")
                         }
@@ -92,7 +97,7 @@ fun QueueScreen(
             uiState = uiState,
             onSearchQueryChanged = viewModel::onSearchQueryChanged,
             onStatusFilterChanged = viewModel::onStatusFilterChanged,
-            onToggleGroupExpanded = viewModel::toggleGroupExpanded,
+            onLoadMore = viewModel::loadMoreTasks,
             modifier = Modifier.padding(padding)
         )
     }
@@ -103,38 +108,42 @@ fun QueueScreenContent(
     uiState: QueueUiState,
     onSearchQueryChanged: (String) -> Unit,
     onStatusFilterChanged: (QueueStatusFilter) -> Unit,
-    onToggleGroupExpanded: (String) -> Unit,
+    onLoadMore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    if (uiState.tasks.isEmpty()) {
+    val listState = rememberLazyListState()
+    val shouldLoadMore by remember(uiState.hasMoreFailedToLoad, uiState.statusFilter, listState) {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            val total = layoutInfo.totalItemsCount
+            val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val hasUserScrolled =
+                listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
+            uiState.statusFilter == QueueStatusFilter.FAILED &&
+                uiState.hasMoreFailedToLoad &&
+                total > 0 &&
+                hasUserScrolled &&
+                lastVisible >= total - 3
+        }
+    }
+
+    LaunchedEffect(shouldLoadMore) {
+        if (shouldLoadMore) onLoadMore()
+    }
+
+    if (uiState.totalTaskCount == 0) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No transfers in queue", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-    } else if (uiState.groups.isEmpty()) {
-        Column(
-            modifier = modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            QueueFilters(
-                searchQuery = uiState.searchQuery,
-                statusFilter = uiState.statusFilter,
-                onSearchQueryChanged = onSearchQueryChanged,
-                onStatusFilterChanged = onStatusFilterChanged,
-            )
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No queue items match these filters", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
     } else {
         LazyColumn(
+            state = listState,
             modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp)
         ) {
             item {
-                SectionHeader(title = "Queue by Folder")
+                SectionHeader(title = "Upload Request")
             }
 
             item {
@@ -146,14 +155,87 @@ fun QueueScreenContent(
                 )
             }
 
-            items(uiState.groups, key = { it.key }) { group ->
-                val expanded = group.key in uiState.expandedGroupKeys
-                QueueFolderGroupCard(
-                    group = group,
-                    expanded = expanded,
-                    onToggleExpanded = { onToggleGroupExpanded(group.key) },
-                )
+            item {
+                QueueRequestSummaryCard(uiState = uiState)
             }
+
+            if (uiState.statusFilter == QueueStatusFilter.FAILED) {
+                if (uiState.failedTasks.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 20.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                "No failed files match current search",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                } else {
+                    items(uiState.failedTasks, key = { it.id }) { task ->
+                        UploadTaskRow(task = task)
+                    }
+                }
+
+                item {
+                    Text(
+                        text = "Showing ${uiState.displayedFailedCount} of ${uiState.totalFailedCount} failed files",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                }
+
+                if (uiState.hasMoreFailedToLoad) {
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                        }
+                    }
+                }
+            } else {
+                item {
+                    Text(
+                        text = "Showing request summary only. Use FAILED filter to inspect specific failed files.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QueueRequestSummaryCard(uiState: QueueUiState) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "Folder upload request",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+
+            LinearProgressIndicator(
+                progress = { (uiState.completedPercent / 100f).coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Text(
+                text = "${uiState.completedCount}/${uiState.totalTaskCount} processed • ${uiState.activeCount} active • ${uiState.failedCount} failed",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -169,7 +251,7 @@ private fun QueueFilters(
         OutlinedTextField(
             value = searchQuery,
             onValueChange = onSearchQueryChanged,
-            label = { Text("Search file or folder") },
+            label = { Text("Search (applies to FAILED list)") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -185,52 +267,11 @@ private fun QueueFilters(
     }
 }
 
-@Composable
-private fun QueueFolderGroupCard(
-    group: QueueTaskGroup,
-    expanded: Boolean,
-    onToggleExpanded: () -> Unit,
-) {
-    ElevatedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onToggleExpanded() },
-    ) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(text = group.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(text = group.folderPath, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(
-                        text = "${group.tasks.size} items • ${group.successCount} success • ${group.failedCount} failed",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Icon(
-                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = if (expanded) "Collapse" else "Expand",
-                )
-            }
-
-            if (expanded) {
-                group.tasks.forEach { task ->
-                    UploadTaskRow(task = task)
-                }
-            }
-        }
-    }
-}
-
 private fun filterLabel(filter: QueueStatusFilter): String =
     when (filter) {
         QueueStatusFilter.ALL -> "All"
-        QueueStatusFilter.SUCCESS -> UploadStatus.SUCCESS.name
-        QueueStatusFilter.FAILED -> UploadStatus.FAILED.name
+        QueueStatusFilter.SUCCESS -> "Success"
+        QueueStatusFilter.FAILED -> "Failed Files"
         QueueStatusFilter.ACTIVE -> "Active"
         QueueStatusFilter.OTHER -> "Other"
     }

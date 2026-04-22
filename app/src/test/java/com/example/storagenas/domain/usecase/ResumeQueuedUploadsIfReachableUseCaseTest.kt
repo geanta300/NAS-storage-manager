@@ -7,6 +7,7 @@ import com.example.storagenas.domain.model.UploadStatus
 import com.example.storagenas.domain.model.UploadTask
 import com.example.storagenas.domain.repository.AppLogRepository
 import com.example.storagenas.domain.repository.NasConfigRepository
+import com.example.storagenas.domain.repository.QueueProgressSnapshot
 import com.example.storagenas.domain.repository.UploadRepository
 import com.example.storagenas.network.common.NetworkResult
 import com.example.storagenas.network.model.NasConnectionState
@@ -88,6 +89,15 @@ private class TestEnvironment {
             uploadFinishedAt: Long?,
             clearTiming: Boolean,
         ) = Unit
+        override suspend fun cancelAllActiveTasks(errorMessage: String): Int = 0
+        override suspend fun getQueueProgressSnapshot(): QueueProgressSnapshot =
+            QueueProgressSnapshot(
+                totalCount = queuedTasks.size,
+                activeCount = queuedTasks.size,
+                completedCount = 0,
+                failedCount = 0,
+                completedPercent = 0,
+            )
         override suspend fun deleteTask(id: Long) = Unit
         override suspend fun clearAllTasks() = Unit
     }
@@ -100,6 +110,10 @@ private class TestEnvironment {
         override fun enqueueUploadTasks(taskIds: List<Long>) {
             enqueuedTaskIds = taskIds
         }
+
+        override fun cancelUploadTask(taskId: Long) = Unit
+
+        override fun cancelAllUploads() = Unit
     }
 
     private val appLogRepository = object : AppLogRepository {

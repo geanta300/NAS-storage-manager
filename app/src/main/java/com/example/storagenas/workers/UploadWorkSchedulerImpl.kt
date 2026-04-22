@@ -25,6 +25,14 @@ class UploadWorkSchedulerImpl @Inject constructor(
         taskIds.forEach(::enqueueUploadTask)
     }
 
+    override fun cancelUploadTask(taskId: Long) {
+        workManager.cancelUniqueWork(UploadWorkConstants.UNIQUE_WORK_PREFIX + taskId)
+    }
+
+    override fun cancelAllUploads() {
+        workManager.cancelAllWorkByTag(UploadWorkConstants.TAG_ALL_UPLOADS)
+    }
+
     private fun createRequest(taskId: Long) =
         OneTimeWorkRequestBuilder<UploadWorker>()
             .setInputData(
@@ -32,6 +40,7 @@ class UploadWorkSchedulerImpl @Inject constructor(
                     .putLong(UploadWorkConstants.KEY_UPLOAD_TASK_ID, taskId)
                     .build(),
             )
+            .addTag(UploadWorkConstants.TAG_ALL_UPLOADS)
             .setConstraints(
                 Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)

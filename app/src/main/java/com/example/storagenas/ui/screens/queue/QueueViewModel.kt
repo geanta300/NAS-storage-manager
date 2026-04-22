@@ -22,20 +22,16 @@ enum class QueueStatusFilter {
     OTHER,
 }
 
-data class QueueTaskGroup(
-    val key: String,
-    val title: String,
-    val folderPath: String,
-    val tasks: List<UploadTask>,
-    val successCount: Int,
-    val failedCount: Int,
-)
-
 data class QueueUiState(
-    val tasks: List<UploadTask> = emptyList(),
-    val filteredTasks: List<UploadTask> = emptyList(),
-    val groups: List<QueueTaskGroup> = emptyList(),
-    val expandedGroupKeys: Set<String> = emptySet(),
+    val totalTaskCount: Int = 0,
+    val activeCount: Int = 0,
+    val completedCount: Int = 0,
+    val failedCount: Int = 0,
+    val completedPercent: Int = 0,
+    val failedTasks: List<UploadTask> = emptyList(),
+    val displayedFailedCount: Int = 0,
+    val totalFailedCount: Int = 0,
+    val hasMoreFailedToLoad: Boolean = false,
     val statusFilter: QueueStatusFilter = QueueStatusFilter.ALL,
     val searchQuery: String = "",
     val message: String? = null,
@@ -46,9 +42,14 @@ class QueueViewModel @Inject constructor(
     private val uploadRepository: UploadRepository,
     private val uploadWorkScheduler: UploadWorkScheduler,
 ) : ViewModel() {
+    companion object {
+        private const val PAGE_SIZE: Int = 50
+    }
+
     private val _uiState = MutableStateFlow(QueueUiState())
     val uiState: StateFlow<QueueUiState> = _uiState.asStateFlow()
     private var latestTasks: List<UploadTask> = emptyList()
+    private var loadedFailedLimit: Int = PAGE_SIZE
 
     init {
         viewModelScope.launch {
@@ -60,16 +61,19 @@ class QueueViewModel @Inject constructor(
     }
 
     fun onSearchQueryChanged(value: String) {
+        loadedFailedLimit = PAGE_SIZE
         _uiState.update { it.copy(searchQuery = value) }
         recomputeUiState(latestTasks)
     }
 
     fun onStatusFilterChanged(filter: QueueStatusFilter) {
+        loadedFailedLimit = PAGE_SIZE
         _uiState.update { it.copy(statusFilter = filter) }
         recomputeUiState(latestTasks)
     }
 
     fun clearFilters() {
+        loadedFailedLimit = PAGE_SIZE
         _uiState.update {
             it.copy(
                 searchQuery = "",
@@ -77,16 +81,6 @@ class QueueViewModel @Inject constructor(
             )
         }
         recomputeUiState(latestTasks)
-    }
-
-    fun toggleGroupExpanded(key: String) {
-        _uiState.update { state ->
-            val next = state.expandedGroupKeys.toMutableSet()
-            if (!next.add(key)) {
-                next.remove(key)
-            }
-            state.copy(expandedGroupKeys = next)
-        }
     }
 
     fun triggerQueuedUploads() {
@@ -101,6 +95,22 @@ class QueueViewModel @Inject constructor(
 
         uploadWorkScheduler.enqueueUploadTasks(queuedIds)
         _uiState.update { it.copy(message = "Started ${queuedIds.size} queued upload(s)") }
+    }
+
+    fun stopAllActiveUploads() {
+        val activeCount = latestTasks.count { task ->
+            task.status == UploadStatus.PENDING || task.status == UploadStatus.QUEUED || task.status == UploadStatus.UPLOADING
+        }
+        if (activeCount == 0) {
+            _uiState.update { it.copy(message = "No active uploads to stop") }
+            return
+        }
+
+        viewModelScope.launch {
+            uploadWorkScheduler.cancelAllUploads()
+            val cancelled = uploadRepository.cancelAllActiveTasks(errorMessage = "Cancelled by user")
+            _uiState.update { it.copy(message = "Stopped $cancelled active upload(s)") }
+        }
     }
 
     fun retryFailedUploads() {
@@ -132,13 +142,36 @@ class QueueViewModel @Inject constructor(
         }
     }
 
+    fun loadMoreTasks() {
+        val state = _uiState.value
+        if (state.statusFilter != QueueStatusFilter.FAILED) return
+        if (state.totalFailedCount <= loadedFailedLimit) return
+        loadedFailedLimit = (loadedFailedLimit + PAGE_SIZE).coerceAtMost(state.totalFailedCount)
+        recomputeUiState(latestTasks)
+    }
+
     private fun recomputeUiState(tasks: List<UploadTask>) {
         val state = _uiState.value
         val query = state.searchQuery.trim().lowercase()
         val queueTasks = tasks.filterNot { it.status == UploadStatus.SKIPPED }
 
-        val filtered = queueTasks
-            .filter { task -> matchesStatusFilter(task, state.statusFilter) }
+        val activeCount = queueTasks.count {
+            it.status == UploadStatus.PENDING || it.status == UploadStatus.QUEUED || it.status == UploadStatus.UPLOADING
+        }
+        val successCount = queueTasks.count { it.status == UploadStatus.SUCCESS }
+        val cancelledCount = queueTasks.count { it.status == UploadStatus.CANCELLED }
+        val failedCount = queueTasks.count { it.status == UploadStatus.FAILED }
+        val completedCount = successCount + cancelledCount + failedCount
+        val completedPercent =
+            if (queueTasks.isEmpty()) {
+                0
+            } else {
+                ((completedCount * 100) / queueTasks.size).coerceIn(0, 100)
+            }
+
+        val failedTasks = queueTasks
+            .asSequence()
+            .filter { it.status == UploadStatus.FAILED }
             .filter { task ->
                 if (query.isBlank()) {
                     true
@@ -147,61 +180,22 @@ class QueueViewModel @Inject constructor(
                 }
             }
             .sortedByDescending { it.updatedAt }
+            .toList()
 
-        val grouped = filtered
-            .groupBy { parentFolderPath(it.destinationPath) }
-            .map { (folderPath, folderTasks) ->
-                QueueTaskGroup(
-                    key = folderPath,
-                    title = folderTitle(folderPath),
-                    folderPath = folderPath,
-                    tasks = folderTasks.sortedByDescending { it.updatedAt },
-                    successCount = folderTasks.count { it.status == UploadStatus.SUCCESS },
-                    failedCount = folderTasks.count { it.status == UploadStatus.FAILED },
-                )
-            }
-            .sortedByDescending { group -> group.tasks.maxOfOrNull { it.updatedAt } ?: Long.MIN_VALUE }
-
-        val validGroupKeys = grouped.map { it.key }.toSet()
-        val expanded = if (state.expandedGroupKeys.isEmpty()) {
-            grouped.take(2).map { it.key }.toSet()
-        } else {
-            state.expandedGroupKeys.intersect(validGroupKeys)
-        }
+        val visibleFailedTasks = failedTasks.take(loadedFailedLimit)
 
         _uiState.update {
             it.copy(
-                tasks = queueTasks,
-                filteredTasks = filtered,
-                groups = grouped,
-                expandedGroupKeys = expanded,
+                totalTaskCount = queueTasks.size,
+                activeCount = activeCount,
+                completedCount = completedCount,
+                failedCount = failedCount,
+                completedPercent = completedPercent,
+                failedTasks = visibleFailedTasks,
+                displayedFailedCount = visibleFailedTasks.size,
+                totalFailedCount = failedTasks.size,
+                hasMoreFailedToLoad = visibleFailedTasks.size < failedTasks.size,
             )
         }
     }
-
-    private fun parentFolderPath(destinationPath: String): String {
-        val normalized = destinationPath.trim().ifBlank { "/" }
-        val parent = normalized.substringBeforeLast('/', missingDelimiterValue = "/")
-        return parent.ifBlank { "/" }
-    }
-
-    private fun folderTitle(folderPath: String): String {
-        if (folderPath == "/") return "Root"
-        return folderPath.substringAfterLast('/').ifBlank { folderPath }
-    }
-
-    private fun matchesStatusFilter(task: UploadTask, filter: QueueStatusFilter): Boolean =
-        when (filter) {
-            QueueStatusFilter.ALL -> true
-            QueueStatusFilter.SUCCESS -> task.status == UploadStatus.SUCCESS
-            QueueStatusFilter.FAILED -> task.status == UploadStatus.FAILED
-            QueueStatusFilter.ACTIVE -> {
-                task.status == UploadStatus.PENDING ||
-                    task.status == UploadStatus.QUEUED ||
-                    task.status == UploadStatus.UPLOADING
-            }
-            QueueStatusFilter.OTHER -> {
-                task.status == UploadStatus.CANCELLED
-            }
-        }
 }

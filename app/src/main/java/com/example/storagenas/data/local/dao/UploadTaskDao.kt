@@ -5,9 +5,21 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.ColumnInfo
 import com.example.storagenas.data.local.entity.UploadTaskEntity
 import com.example.storagenas.domain.model.UploadStatus
 import kotlinx.coroutines.flow.Flow
+
+data class QueueCountsTuple(
+    @ColumnInfo(name = "total_count")
+    val totalCount: Int,
+    @ColumnInfo(name = "active_count")
+    val activeCount: Int,
+    @ColumnInfo(name = "completed_count")
+    val completedCount: Int,
+    @ColumnInfo(name = "failed_count")
+    val failedCount: Int,
+)
 
 @Dao
 interface UploadTaskDao {
@@ -62,6 +74,34 @@ interface UploadTaskDao {
         clearTiming: Boolean = false,
         updatedAt: Long = System.currentTimeMillis(),
     )
+
+    @Query(
+        """
+        UPDATE upload_task
+        SET status = 'CANCELLED',
+            progress = 0,
+            error_message = :errorMessage,
+            upload_finished_at = :finishedAt,
+            updated_at = :finishedAt
+        WHERE status IN ('PENDING', 'QUEUED', 'UPLOADING')
+        """,
+    )
+    suspend fun cancelAllActive(
+        errorMessage: String,
+        finishedAt: Long = System.currentTimeMillis(),
+    ): Int
+
+    @Query(
+        """
+        SELECT
+            COUNT(*) AS total_count,
+            SUM(CASE WHEN status IN ('PENDING', 'QUEUED', 'UPLOADING') THEN 1 ELSE 0 END) AS active_count,
+            SUM(CASE WHEN status IN ('SUCCESS', 'CANCELLED', 'SKIPPED') THEN 1 ELSE 0 END) AS completed_count,
+            SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed_count
+        FROM upload_task
+        """,
+    )
+    suspend fun getQueueCounts(): QueueCountsTuple
 
     @Query("DELETE FROM upload_task WHERE id = :id")
     suspend fun deleteById(id: Long)
