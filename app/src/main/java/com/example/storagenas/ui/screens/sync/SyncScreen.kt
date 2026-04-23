@@ -19,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,13 +42,19 @@ fun SyncScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
-    val mediaPermissionGranted = hasMediaAccessPermission(context)
+    val mediaPermissionGrantedState = remember(context) { mutableStateOf(hasMediaAccessPermission(context)) }
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
     ) {
-        if (hasMediaAccessPermission(context)) {
+        val granted = hasMediaAccessPermission(context)
+        mediaPermissionGrantedState.value = granted
+        if (granted) {
             viewModel.refreshAlbums()
         }
+    }
+
+    LaunchedEffect(context) {
+        mediaPermissionGrantedState.value = hasMediaAccessPermission(context)
     }
 
     LaunchedEffect(uiState.latestSummary) {
@@ -79,7 +86,7 @@ fun SyncScreen(
             onClearAlbumSelection = viewModel::clearAlbumSelection,
             onRefreshAlbums = viewModel::refreshAlbums,
             onBrowseDestination = onNavigateToNasBrowser,
-            hasMediaPermission = mediaPermissionGranted,
+            hasMediaPermission = mediaPermissionGrantedState.value,
             onRequestMediaPermission = {
                 permissionLauncher.launch(requiredMediaPermissions())
             },
@@ -217,7 +224,7 @@ fun SyncScreenContent(
                         }
                     }
                 }
-                items(uiState.albums) { album ->
+                items(uiState.albums, key = { album -> album.id }) { album ->
                     PremiumCard(
                         modifier = Modifier.clickable { onToggleAlbum(album.id) }.padding(vertical = 4.dp)
                     ) {
@@ -273,7 +280,10 @@ fun SyncScreenContent(
 
 private fun requiredMediaPermissions(): Array<String> =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
+        arrayOf(
+            Manifest.permission.READ_MEDIA_IMAGES,
+            Manifest.permission.READ_MEDIA_VIDEO,
+        )
     } else {
         arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
     }

@@ -11,6 +11,9 @@ object ShareIntentStore {
     private val _sharedUris = MutableStateFlow<List<Uri>>(emptyList())
     val sharedUris: StateFlow<List<Uri>> = _sharedUris.asStateFlow()
 
+    private val _shareVersion = MutableStateFlow(0L)
+    val shareVersion: StateFlow<Long> = _shareVersion.asStateFlow()
+
     fun ingest(intent: Intent?) {
         if (intent == null) return
 
@@ -38,6 +41,7 @@ object ShareIntentStore {
 
         if (uris.isNotEmpty()) {
             _sharedUris.value = uris
+            _shareVersion.value = _shareVersion.value + 1
         }
     }
 

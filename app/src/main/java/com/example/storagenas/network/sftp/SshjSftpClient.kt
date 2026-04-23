@@ -1033,10 +1033,7 @@ class SshjSftpClient @Inject constructor(
          */
         fun isUsable(): Boolean =
             runCatching { ssh.isConnected && ssh.isAuthenticated }.getOrDefault(false) &&
-                (
-                    usesZeroTier ||
-                        (System.currentTimeMillis() - createdAtMs < SESSION_MAX_AGE_MS)
-                )
+                (System.currentTimeMillis() - createdAtMs < SESSION_MAX_AGE_MS)
     }
 
     private data class AttemptContext(
