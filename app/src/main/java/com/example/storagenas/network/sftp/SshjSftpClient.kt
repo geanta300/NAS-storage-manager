@@ -26,7 +26,6 @@ import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.common.SecurityUtils
 import net.schmizz.sshj.sftp.SFTPClient
 import net.schmizz.sshj.transport.TransportException
-import net.schmizz.sshj.transport.verification.PromiscuousVerifier
 import net.schmizz.sshj.userauth.UserAuthException
 import java.io.IOException
 import java.io.InputStream
@@ -836,7 +835,6 @@ class SshjSftpClient @Inject constructor(
             )
 
             try {
-                ssh.addHostKeyVerifier(PromiscuousVerifier())
                 val connectTimeoutMs = connectTimeoutMsForRoute(
                     preferredRoute = preferredRoute,
                     routeIndex = routeIndex,
@@ -1033,10 +1031,7 @@ class SshjSftpClient @Inject constructor(
          */
         fun isUsable(): Boolean =
             runCatching { ssh.isConnected && ssh.isAuthenticated }.getOrDefault(false) &&
-                (
-                    usesZeroTier ||
-                        (System.currentTimeMillis() - createdAtMs < SESSION_MAX_AGE_MS)
-                )
+                (System.currentTimeMillis() - createdAtMs < SESSION_MAX_AGE_MS)
     }
 
     private data class AttemptContext(

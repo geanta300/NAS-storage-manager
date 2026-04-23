@@ -34,6 +34,7 @@ class UploadWorker(
     companion object {
         private const val NOTIFICATION_CHANNEL_ID: String = "upload_worker_channel"
         private const val NOTIFICATION_CHANNEL_NAME: String = "Upload transfers"
+        private const val MAX_RETRY_ATTEMPTS = 3
     }
 
     @EntryPoint
@@ -70,9 +71,8 @@ class UploadWorker(
             val cancelledTask = uploadRepository.getTaskById(taskId)
             if (cancelledTask != null) {
                 cancelTask(taskId, cancelledTask.displayName, uploadRepository, appLogRepository)
-            } else {
-                Result.success()
             }
+            throw CancellationException()
         } catch (error: Throwable) {
             handleUnexpectedWorkerError(taskId, error, uploadRepository, appLogRepository)
         }
@@ -119,12 +119,13 @@ class UploadWorker(
         val uri = task.localUri.toUri()
         val source = copyUriToTempFile(uri, task.displayName)
             ?: return failTask(taskId, "Cannot read source file", uploadRepository, appLogRepository)
-        if (isStopped) {
-            runCatching { source.delete() }
-            return cancelTask(taskId, task.displayName, uploadRepository, appLogRepository)
-        }
 
-        val remotePath = joinRemotePath(task.destinationPath, task.displayName)
+        try {
+            if (isStopped) {
+                return cancelTask(taskId, task.displayName, uploadRepository, appLogRepository)
+            }
+
+            val remotePath = joinRemotePath(task.destinationPath, task.displayName)
         uploadRepository.updateTaskState(
             id = taskId,
             status = UploadStatus.UPLOADING,
@@ -138,18 +139,17 @@ class UploadWorker(
             appLogRepository = appLogRepository,
         )
 
-        val result = sftpClient.uploadFile(
-            config = config,
-            localFilePath = source.absolutePath,
-            remotePath = remotePath,
-        )
+            val result = sftpClient.uploadFile(
+                config = config,
+                localFilePath = source.absolutePath,
+                remotePath = remotePath,
+            )
 
-        runCatching { source.delete() }
-        if (isStopped) {
-            return cancelTask(taskId, task.displayName, uploadRepository, appLogRepository)
-        }
+            if (isStopped) {
+                return cancelTask(taskId, task.displayName, uploadRepository, appLogRepository)
+            }
 
-        return when (result) {
+            return when (result) {
             is NetworkResult.Success -> {
                 uploadRepository.updateTaskState(
                     id = taskId,
@@ -174,13 +174,18 @@ class UploadWorker(
                 Result.success()
             }
 
-            is NetworkResult.Error -> {
-                if (isStopped) {
-                    cancelTask(taskId, task.displayName, uploadRepository, appLogRepository)
-                } else {
-                    failTask(taskId, result.message, uploadRepository, appLogRepository)
+                is NetworkResult.Error -> {
+                    if (isStopped) {
+                        cancelTask(taskId, task.displayName, uploadRepository, appLogRepository)
+                    } else if (result.code.isRetryable() && runAttemptCount < MAX_RETRY_ATTEMPTS) {
+                        retryTask(taskId, result.message, uploadRepository, appLogRepository)
+                    } else {
+                        failTask(taskId, result.message, uploadRepository, appLogRepository)
+                    }
                 }
             }
+        } finally {
+            runCatching { source.delete() }
         }
     }
 
@@ -244,6 +249,10 @@ class UploadWorker(
         uploadRepository: UploadRepository,
         appLogRepository: AppLogRepository,
     ): Result {
+        val currentTask = uploadRepository.getTaskById(taskId)
+        if (currentTask?.status == UploadStatus.CANCELLED) {
+            return Result.success()
+        }
         uploadRepository.updateTaskState(
             id = taskId,
             status = UploadStatus.CANCELLED,
@@ -286,14 +295,53 @@ class UploadWorker(
         val safeName = displayName.replace("/", "_").replace("\\", "_")
         val target = File.createTempFile("upload_", "_$safeName", applicationContext.cacheDir)
 
-        return runCatching {
+        return try {
             applicationContext.contentResolver.openInputStream(uri)?.use { input ->
                 target.outputStream().use { output ->
                     input.copyTo(output)
                 }
-            } ?: return null
+            } ?: run {
+                target.delete()
+                return null
+            }
             target
-        }.getOrNull()
+        } catch (error: CancellationException) {
+            target.delete()
+            throw error
+        } catch (_: Throwable) {
+            target.delete()
+            null
+        }
+    }
+
+    private suspend fun retryTask(
+        taskId: Long,
+        message: String,
+        uploadRepository: UploadRepository,
+        appLogRepository: AppLogRepository,
+    ): Result {
+        uploadRepository.updateTaskState(
+            id = taskId,
+            status = UploadStatus.QUEUED,
+            progress = 0,
+            errorMessage = message,
+            clearTiming = true,
+        )
+        appLogRepository.addLog(
+            AppLog(
+                type = LogType.WARNING,
+                message = "Upload task $taskId queued for retry ${runAttemptCount + 1}/$MAX_RETRY_ATTEMPTS: $message",
+            ),
+        )
+        return Result.retry()
+    }
+
+    private fun NetworkResult.ErrorCode?.isRetryable(): Boolean = when (this) {
+        NetworkResult.ErrorCode.UNKNOWN,
+        NetworkResult.ErrorCode.TIMEOUT,
+        NetworkResult.ErrorCode.CONNECTION,
+        NetworkResult.ErrorCode.IO -> true
+        else -> false
     }
 
     private fun joinRemotePath(base: String, fileName: String): String {

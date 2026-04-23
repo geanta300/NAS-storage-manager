@@ -38,7 +38,6 @@ object StorageModule {
             AppDatabase::class.java,
             AppDatabase.DATABASE_NAME,
         ).addMigrations(MIGRATION_1_2)
-            .fallbackToDestructiveMigration(true)
             .build()
 
     @Provides

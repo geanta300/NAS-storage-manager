@@ -11,7 +11,9 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
@@ -23,6 +25,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.runtime.collectAsState
+import com.example.storagenas.share.ShareIntentStore
 import com.example.storagenas.ui.screens.browser.NasBrowserScreen
 import com.example.storagenas.ui.screens.home.HomeScreen
 import com.example.storagenas.ui.screens.logs.LogsScreen
@@ -46,6 +50,22 @@ fun AppNavHost(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val currentRoute = currentDestination?.route ?: AppDestination.Home.route
+    val sharedUris by ShareIntentStore.sharedUris.collectAsState()
+    val shareVersion by ShareIntentStore.shareVersion.collectAsState()
+    val lastHandledShareVersion = remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(shareVersion, sharedUris, currentRoute) {
+        if (
+            shareVersion > lastHandledShareVersion.longValue &&
+            sharedUris.isNotEmpty() &&
+            currentRoute != AppDestination.ShareImport.route
+        ) {
+            lastHandledShareVersion.longValue = shareVersion
+            navController.navigate(AppDestination.ShareImport.route) {
+                launchSingleTop = true
+            }
+        }
+    }
 
     Scaffold(
         modifier = modifier,
