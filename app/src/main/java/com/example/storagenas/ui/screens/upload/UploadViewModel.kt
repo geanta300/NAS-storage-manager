@@ -63,6 +63,10 @@ class UploadViewModel @Inject constructor(
         _uiState.update { it.copy(destinationPath = value.ifBlank { "/" }) }
     }
 
+    fun clearMessage() {
+        _uiState.update { it.copy(message = null) }
+    }
+
     fun queueUris(uris: List<Uri>) {
         if (uris.isEmpty()) return
 

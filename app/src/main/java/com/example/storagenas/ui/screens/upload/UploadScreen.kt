@@ -44,6 +44,7 @@ fun UploadScreen(
     LaunchedEffect(uiState.message) {
         uiState.message?.let {
             snackbarHostState.showSnackbar(it)
+            viewModel.clearMessage()
         }
     }
 
@@ -84,10 +85,10 @@ fun UploadScreenContent(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        contentPadding = PaddingValues(top = 24.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         item {
-            Spacer(modifier = Modifier.height(24.dp))
             Text(
                 text = "Upload",
                 style = MaterialTheme.typography.headlineMedium.copy(
@@ -95,31 +96,54 @@ fun UploadScreenContent(
                     color = MaterialTheme.colorScheme.onBackground
                 )
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Choose a NAS destination, then queue media or documents for transfer.",
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            )
         }
 
         item {
-            SectionHeader(title = "Upload Destination")
-            PremiumCard {
+            SectionHeader(title = "Destination")
+            PremiumCard(
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+            ) {
+                Text(
+                    text = "Current folder",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                )
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = uiState.destinationPath,
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        fontWeight = FontWeight.Medium
+                    ),
                     modifier = Modifier.fillMaxWidth(),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 Button(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onBrowseDestination,
                 ) {
                     Icon(Icons.Default.Folder, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Pick Folder")
+                    Text("Choose NAS Destination")
                 }
             }
         }
 
         item {
-            SectionHeader(title = "Select Files")
+            SectionHeader(title = "Choose Files")
+            Spacer(modifier = Modifier.height(12.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -127,6 +151,7 @@ fun UploadScreenContent(
                 UploadCard(
                     modifier = Modifier.weight(1f),
                     title = "Media",
+                    subtitle = "Photos and videos",
                     icon = Icons.Default.Image,
                     onClick = onPickPhotos,
                     isBusy = uiState.isQueueing
@@ -134,6 +159,7 @@ fun UploadScreenContent(
                 UploadCard(
                     modifier = Modifier.weight(1f),
                     title = "Documents",
+                    subtitle = "PDFs and files",
                     icon = Icons.Default.Description,
                     onClick = onPickDocuments,
                     isBusy = uiState.isQueueing
@@ -143,15 +169,11 @@ fun UploadScreenContent(
 
         if (uiState.recentTasks.isNotEmpty()) {
             item {
-                SectionHeader(title = "Recent Uploads", modifier = Modifier.padding(top = 16.dp))
+                SectionHeader(title = "Recent Uploads", modifier = Modifier.padding(top = 4.dp))
             }
             items(uiState.recentTasks, key = { it.id }) { task ->
                 UploadTaskRow(task = task)
             }
-        }
-        
-        item {
-            Spacer(modifier = Modifier.height(80.dp))
         }
     }
 }
@@ -160,6 +182,7 @@ fun UploadScreenContent(
 fun UploadCard(
     modifier: Modifier = Modifier,
     title: String,
+    subtitle: String,
     icon: ImageVector,
     onClick: () -> Unit,
     isBusy: Boolean
@@ -169,13 +192,13 @@ fun UploadCard(
         containerColor = MaterialTheme.colorScheme.secondaryContainer
     ) {
         Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(vertical = 16.dp).fillMaxWidth()
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
             if (isBusy) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier.size(32.dp),
                     color = MaterialTheme.colorScheme.primary,
                     strokeWidth = 3.dp
                 )
@@ -183,15 +206,19 @@ fun UploadCard(
                 Icon(
                     imageVector = icon,
                     contentDescription = title,
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier.size(32.dp),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
-            Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
@@ -217,7 +244,8 @@ fun UploadTaskRow(task: UploadTask) {
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Icon(
                 imageVector = icon,
@@ -225,19 +253,20 @@ fun UploadTaskRow(task: UploadTask) {
                 tint = color,
                 modifier = Modifier.size(24.dp)
             )
-            Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = task.displayName,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "${task.status.name} • ${task.progress}%",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Spacer(modifier = Modifier.height(8.dp))
                 val startedText = task.uploadStartedAt?.let(::formatShortDateTime) ?: "-"
                 val finishedText = task.uploadFinishedAt?.let(::formatShortDateTime) ?: "-"
                 Text(
@@ -254,7 +283,7 @@ fun UploadTaskRow(task: UploadTask) {
             if (task.status == UploadStatus.UPLOADING) {
                 CircularProgressIndicator(
                     progress = { task.progress / 100f },
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(22.dp),
                     color = MaterialTheme.colorScheme.primary,
                     strokeWidth = 2.dp
                 )

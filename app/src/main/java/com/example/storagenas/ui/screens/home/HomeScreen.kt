@@ -61,10 +61,10 @@ fun HomeScreenContent(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        contentPadding = PaddingValues(top = 24.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         item {
-            Spacer(modifier = Modifier.height(24.dp))
             Text(
                 text = "Dashboard",
                 style = MaterialTheme.typography.headlineMedium.copy(
@@ -72,50 +72,50 @@ fun HomeScreenContent(
                     color = MaterialTheme.colorScheme.onBackground
                 )
             )
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "StorageNAS Node",
+                text = "Monitor your node, launch uploads, and jump into key tools quickly.",
                 style = MaterialTheme.typography.bodyLarge.copy(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             )
-            Spacer(modifier = Modifier.height(24.dp))
         }
 
         item {
             PremiumCard(
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
-                borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
             ) {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Connection Status",
-                            style = MaterialTheme.typography.titleMedium.copy(
+                            text = "Connection overview",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "StorageNAS Node",
+                            style = MaterialTheme.typography.headlineSmall.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "ZeroTier: ${uiState.zeroTierStatusText}",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.9f)
-                            )
-                        )
-                        Text(
-                            text = "NAS: ${uiState.nasStatusText}",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                            )
-                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        StatusLine(label = "ZeroTier", value = uiState.zeroTierStatusText)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        StatusLine(label = "NAS", value = uiState.nasStatusText)
                     }
                     if (uiState.isChecking) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
+                            modifier = Modifier.size(28.dp),
                             color = MaterialTheme.colorScheme.primary,
-                            strokeWidth = 2.dp
+                            strokeWidth = 2.5.dp
                         )
                     } else {
                         IconButton(onClick = onRefreshStatus) {
@@ -131,7 +131,8 @@ fun HomeScreenContent(
         }
 
         item {
-            SectionHeader(title = "Quick Actions", modifier = Modifier.padding(top = 16.dp))
+            SectionHeader(title = "Quick Actions")
+            Spacer(modifier = Modifier.height(12.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -139,12 +140,14 @@ fun HomeScreenContent(
                 ActionCard(
                     modifier = Modifier.weight(1f),
                     title = "Upload",
+                    subtitle = "Send new files",
                     icon = Icons.Default.CloudUpload,
                     onClick = onNavigateToUpload
                 )
                 ActionCard(
                     modifier = Modifier.weight(1f),
                     title = "Sync",
+                    subtitle = "Keep content aligned",
                     icon = Icons.Default.Sync,
                     onClick = onNavigateToSync
                 )
@@ -157,12 +160,14 @@ fun HomeScreenContent(
                 ActionCard(
                     modifier = Modifier.weight(1f),
                     title = "Browse NAS",
+                    subtitle = "Explore folders",
                     icon = Icons.Default.Folder,
                     onClick = onNavigateToNasBrowser
                 )
                 ActionCard(
                     modifier = Modifier.weight(1f),
                     title = "Settings",
+                    subtitle = "Adjust preferences",
                     icon = Icons.Default.Settings,
                     onClick = onNavigateToSettings
                 )
@@ -172,8 +177,33 @@ fun HomeScreenContent(
 }
 
 @Composable
+private fun StatusLine(
+    label: String,
+    value: String,
+) {
+    Column {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium.copy(
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f),
+                fontWeight = FontWeight.Medium
+            )
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyLarge.copy(
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                fontWeight = FontWeight.SemiBold
+            )
+        )
+    }
+}
+
+@Composable
 fun ActionCard(
     title: String,
+    subtitle: String,
     icon: ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -182,21 +212,27 @@ fun ActionCard(
         modifier = modifier.clickable { onClick() }
     ) {
         Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(vertical = 12.dp).fillMaxWidth()
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = title,
-                modifier = Modifier.size(32.dp),
+                modifier = Modifier.size(28.dp),
                 tint = MaterialTheme.colorScheme.primary
             )
-            Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.SemiBold
+                ),
                 color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

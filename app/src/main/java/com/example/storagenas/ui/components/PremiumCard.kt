@@ -17,24 +17,29 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun PremiumCard(
     modifier: Modifier = Modifier,
-    containerColor: Color = MaterialTheme.colorScheme.surface,
-    borderColor: Color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    borderColor: Color = MaterialTheme.colorScheme.outline.copy(alpha = 0.14f),
     content: @Composable ColumnScope.() -> Unit,
 ) {
     OutlinedCard(
         modifier = modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.large),
+            .fillMaxWidth(),
         colors = CardDefaults.outlinedCardColors(
-            containerColor = containerColor
+            containerColor = containerColor,
         ),
         border = BorderStroke(1.dp, borderColor),
+        elevation = CardDefaults.outlinedCardElevation(
+            defaultElevation = 2.dp,
+            pressedElevation = 1.dp,
+            focusedElevation = 3.dp,
+            hoveredElevation = 3.dp,
+        ),
         shape = MaterialTheme.shapes.large,
         content = {
             Column(
-                modifier = Modifier.padding(16.dp),
-                content = content
+                modifier = Modifier.padding(18.dp),
+                content = content,
             )
-        }
+        },
     )
 }

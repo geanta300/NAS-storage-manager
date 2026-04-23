@@ -60,19 +60,19 @@ class QueueViewModelTest {
         viewModel.onStatusFilterChanged(QueueStatusFilter.FAILED)
         advanceUntilIdle()
 
-        assertEquals(50, viewModel.uiState.value.displayedFailedCount)
-        assertEquals(120, viewModel.uiState.value.totalFailedCount)
-        assertTrue(viewModel.uiState.value.hasMoreFailedToLoad)
+        assertEquals(50, viewModel.uiState.value.displayedTaskCount)
+        assertEquals(120, viewModel.uiState.value.totalFilteredCount)
+        assertTrue(viewModel.uiState.value.hasMoreToLoad)
 
         viewModel.loadMoreTasks()
         advanceUntilIdle()
-        assertEquals(100, viewModel.uiState.value.displayedFailedCount)
-        assertTrue(viewModel.uiState.value.hasMoreFailedToLoad)
+        assertEquals(100, viewModel.uiState.value.displayedTaskCount)
+        assertTrue(viewModel.uiState.value.hasMoreToLoad)
 
         viewModel.loadMoreTasks()
         advanceUntilIdle()
-        assertEquals(120, viewModel.uiState.value.displayedFailedCount)
-        assertFalse(viewModel.uiState.value.hasMoreFailedToLoad)
+        assertEquals(120, viewModel.uiState.value.displayedTaskCount)
+        assertFalse(viewModel.uiState.value.hasMoreToLoad)
     }
 
     @Test

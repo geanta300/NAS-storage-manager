@@ -51,8 +51,9 @@ fun AppNavHost(
         modifier = modifier,
         bottomBar = {
             NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.height(64.dp),
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                tonalElevation = 8.dp,
+                modifier = Modifier.height(72.dp),
             ) {
                 navItems.forEach { destination ->
                     val destinationRoute = destination.route
@@ -67,13 +68,13 @@ fun AppNavHost(
                         },
                         icon = { Icon(destination.icon, contentDescription = destination.title) },
                         label = { Text(destination.title) },
-                        alwaysShowLabel = true,
+                        alwaysShowLabel = false,
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
                             selectedTextColor = MaterialTheme.colorScheme.primary,
                             unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                         ),
                     )
                 }

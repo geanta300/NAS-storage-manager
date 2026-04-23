@@ -28,10 +28,10 @@ data class QueueUiState(
     val completedCount: Int = 0,
     val failedCount: Int = 0,
     val completedPercent: Int = 0,
-    val failedTasks: List<UploadTask> = emptyList(),
-    val displayedFailedCount: Int = 0,
-    val totalFailedCount: Int = 0,
-    val hasMoreFailedToLoad: Boolean = false,
+    val filteredTasks: List<UploadTask> = emptyList(),
+    val displayedTaskCount: Int = 0,
+    val totalFilteredCount: Int = 0,
+    val hasMoreToLoad: Boolean = false,
     val statusFilter: QueueStatusFilter = QueueStatusFilter.ALL,
     val searchQuery: String = "",
     val message: String? = null,
@@ -49,7 +49,7 @@ class QueueViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(QueueUiState())
     val uiState: StateFlow<QueueUiState> = _uiState.asStateFlow()
     private var latestTasks: List<UploadTask> = emptyList()
-    private var loadedFailedLimit: Int = PAGE_SIZE
+    private var loadedTaskLimit: Int = PAGE_SIZE
 
     init {
         viewModelScope.launch {
@@ -60,20 +60,24 @@ class QueueViewModel @Inject constructor(
         }
     }
 
+    fun clearMessage() {
+        _uiState.update { it.copy(message = null) }
+    }
+
     fun onSearchQueryChanged(value: String) {
-        loadedFailedLimit = PAGE_SIZE
+        loadedTaskLimit = PAGE_SIZE
         _uiState.update { it.copy(searchQuery = value) }
         recomputeUiState(latestTasks)
     }
 
     fun onStatusFilterChanged(filter: QueueStatusFilter) {
-        loadedFailedLimit = PAGE_SIZE
+        loadedTaskLimit = PAGE_SIZE
         _uiState.update { it.copy(statusFilter = filter) }
         recomputeUiState(latestTasks)
     }
 
     fun clearFilters() {
-        loadedFailedLimit = PAGE_SIZE
+        loadedTaskLimit = PAGE_SIZE
         _uiState.update {
             it.copy(
                 searchQuery = "",
@@ -144,9 +148,8 @@ class QueueViewModel @Inject constructor(
 
     fun loadMoreTasks() {
         val state = _uiState.value
-        if (state.statusFilter != QueueStatusFilter.FAILED) return
-        if (state.totalFailedCount <= loadedFailedLimit) return
-        loadedFailedLimit = (loadedFailedLimit + PAGE_SIZE).coerceAtMost(state.totalFailedCount)
+        if (state.totalFilteredCount <= loadedTaskLimit) return
+        loadedTaskLimit = (loadedTaskLimit + PAGE_SIZE).coerceAtMost(state.totalFilteredCount)
         recomputeUiState(latestTasks)
     }
 
@@ -169,9 +172,17 @@ class QueueViewModel @Inject constructor(
                 ((completedCount * 100) / queueTasks.size).coerceIn(0, 100)
             }
 
-        val failedTasks = queueTasks
+        val filteredTasks = queueTasks
             .asSequence()
-            .filter { it.status == UploadStatus.FAILED }
+            .filter { task ->
+                when (state.statusFilter) {
+                    QueueStatusFilter.ALL -> true
+                    QueueStatusFilter.SUCCESS -> task.status == UploadStatus.SUCCESS
+                    QueueStatusFilter.FAILED -> task.status == UploadStatus.FAILED
+                    QueueStatusFilter.ACTIVE -> task.status == UploadStatus.PENDING || task.status == UploadStatus.QUEUED || task.status == UploadStatus.UPLOADING
+                    QueueStatusFilter.OTHER -> task.status == UploadStatus.CANCELLED || task.status == UploadStatus.SKIPPED
+                }
+            }
             .filter { task ->
                 if (query.isBlank()) {
                     true
@@ -182,7 +193,7 @@ class QueueViewModel @Inject constructor(
             .sortedByDescending { it.updatedAt }
             .toList()
 
-        val visibleFailedTasks = failedTasks.take(loadedFailedLimit)
+        val visibleTasks = filteredTasks.take(loadedTaskLimit)
 
         _uiState.update {
             it.copy(
@@ -191,10 +202,10 @@ class QueueViewModel @Inject constructor(
                 completedCount = completedCount,
                 failedCount = failedCount,
                 completedPercent = completedPercent,
-                failedTasks = visibleFailedTasks,
-                displayedFailedCount = visibleFailedTasks.size,
-                totalFailedCount = failedTasks.size,
-                hasMoreFailedToLoad = visibleFailedTasks.size < failedTasks.size,
+                filteredTasks = visibleTasks,
+                displayedTaskCount = visibleTasks.size,
+                totalFilteredCount = filteredTasks.size,
+                hasMoreToLoad = visibleTasks.size < filteredTasks.size,
             )
         }
     }

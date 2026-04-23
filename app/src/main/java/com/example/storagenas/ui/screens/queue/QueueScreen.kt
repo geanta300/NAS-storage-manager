@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.storagenas.ui.screens.upload.UploadTaskRow
+import com.example.storagenas.ui.components.PremiumCard
 import com.example.storagenas.ui.components.SectionHeader
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -41,6 +42,7 @@ fun QueueScreen(
     LaunchedEffect(uiState.message) {
         uiState.message?.let {
             snackbarHostState.showSnackbar(it)
+            viewModel.clearMessage()
         }
     }
 
@@ -112,7 +114,7 @@ fun QueueScreenContent(
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
-    val shouldLoadMore by remember(uiState.hasMoreFailedToLoad, uiState.statusFilter, listState) {
+    val shouldLoadMore by remember(uiState.hasMoreToLoad, uiState.statusFilter, listState) {
         derivedStateOf {
             val layoutInfo = listState.layoutInfo
             val total = layoutInfo.totalItemsCount
@@ -120,7 +122,7 @@ fun QueueScreenContent(
             val hasUserScrolled =
                 listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
             uiState.statusFilter == QueueStatusFilter.FAILED &&
-                uiState.hasMoreFailedToLoad &&
+                uiState.hasMoreToLoad &&
                 total > 0 &&
                 hasUserScrolled &&
                 lastVisible >= total - 3
@@ -133,17 +135,29 @@ fun QueueScreenContent(
 
     if (uiState.totalTaskCount == 0) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No transfers in queue", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            PremiumCard(modifier = Modifier.padding(horizontal = 24.dp)) {
+                Text(
+                    text = "Transfer queue",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "No transfers are in progress yet. Start an upload to populate the queue.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
         }
     } else {
         LazyColumn(
             state = listState,
             modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(top = 20.dp, bottom = 80.dp)
         ) {
             item {
-                SectionHeader(title = "Upload Request")
+                SectionHeader(title = "Queue Overview")
             }
 
             item {
@@ -159,54 +173,49 @@ fun QueueScreenContent(
                 QueueRequestSummaryCard(uiState = uiState)
             }
 
-            if (uiState.statusFilter == QueueStatusFilter.FAILED) {
-                if (uiState.failedTasks.isEmpty()) {
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 20.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                "No failed files match current search",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                } else {
-                    items(uiState.failedTasks, key = { it.id }) { task ->
-                        UploadTaskRow(task = task)
-                    }
-                }
-
+            if (uiState.filteredTasks.isEmpty()) {
                 item {
-                    Text(
-                        text = "Showing ${uiState.displayedFailedCount} of ${uiState.totalFailedCount} failed files",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 8.dp),
-                    )
-                }
-
-                if (uiState.hasMoreFailedToLoad) {
-                    item {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                        }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 20.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = when (uiState.statusFilter) {
+                                QueueStatusFilter.ALL -> "No transfers match current search"
+                                QueueStatusFilter.SUCCESS -> "No successful transfers match current search"
+                                QueueStatusFilter.FAILED -> "No failed files match current search"
+                                QueueStatusFilter.ACTIVE -> "No active transfers match current search"
+                                QueueStatusFilter.OTHER -> "No other transfers match current search"
+                            },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             } else {
+                items(uiState.filteredTasks, key = { it.id }) { task ->
+                    UploadTaskRow(task = task)
+                }
+            }
+
+            item {
+                Text(
+                    text = "Showing ${uiState.displayedTaskCount} of ${uiState.totalFilteredCount} ${filterLabel(uiState.statusFilter).lowercase()} item(s)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 8.dp),
+                )
+            }
+
+            if (uiState.hasMoreToLoad) {
                 item {
-                    Text(
-                        text = "Showing request summary only. Use FAILED filter to inspect specific failed files.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 8.dp),
-                    )
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                    }
                 }
             }
         }
@@ -215,14 +224,23 @@ fun QueueScreenContent(
 
 @Composable
 private fun QueueRequestSummaryCard(uiState: QueueUiState) {
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+    PremiumCard(
+        containerColor = MaterialTheme.colorScheme.primaryContainer,
+        borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.28f),
+    ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = "Folder upload request",
-                style = MaterialTheme.typography.titleMedium,
+                text = "Upload progress",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = "${uiState.completedCount}/${uiState.totalTaskCount} processed",
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
                 fontWeight = FontWeight.Bold,
             )
 
@@ -232,9 +250,9 @@ private fun QueueRequestSummaryCard(uiState: QueueUiState) {
             )
 
             Text(
-                text = "${uiState.completedCount}/${uiState.totalTaskCount} processed • ${uiState.activeCount} active • ${uiState.failedCount} failed",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = "${uiState.activeCount} active • ${uiState.failedCount} failed",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f),
             )
         }
     }
@@ -251,7 +269,7 @@ private fun QueueFilters(
         OutlinedTextField(
             value = searchQuery,
             onValueChange = onSearchQueryChanged,
-            label = { Text("Search (applies to FAILED list)") },
+            label = { Text("Search queue items") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )

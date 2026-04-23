@@ -41,3 +41,5 @@ app/libs/*.aar
 
 ## OS files
 .DS_Store
+
+.devfleet-worktrees/
